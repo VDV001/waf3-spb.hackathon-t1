@@ -1,0 +1,140 @@
+# Включение режима защиты
+SecEngine On
+
+# Установка уровня паранойи (если поддерживается)
+SecPcreMatchLimit 100000
+SecPcreMatchLimitRecursion 100000
+
+# Ограничение размера тела запроса для предотвращения DoS-атак
+SecRequestBodyAccess On
+SecRequestBodyLimit 13107200 # Ограничение на 12 МБ
+SecRequestBodyLimitAction Reject
+
+# Логирование всех заблокированных запросов
+SecAuditLog /var/log/modsecurity/audit.log
+SecAuditLogParts ABIJDEFHZ # Логирование всех частей для детального анализа
+
+# -= Paranoia Level 0 (empty) =-
+SecRule TX:DETECTION_PARANOIA_LEVEL "@lt 1" "id:913011,phase:1,pass,nolog,tag:'OWASP_CRS',ver:'OWASP_CRS/4.9.0-dev',skipAfter:END-REQUEST-913-SCANNER-DETECTION"
+SecRule TX:DETECTION_PARANOIA_LEVEL "@lt 1" "id:913012,phase:2,pass,nolog,tag:'OWASP_CRS',ver:'OWASP_CRS/4.9.0-dev',skipAfter:END-REQUEST-913-SCANNER-DETECTION"
+
+# -= Paranoia Level 1 =-
+SecRule REQUEST_HEADERS:User-Agent "@pmFromFile scanners-user-agents.data" \
+    "id:913100,\
+    phase:1,\
+    block,\
+    capture,\
+    t:none,\
+    msg:'Found User-Agent associated with security scanner',\
+    logdata:'Matched Data: %{TX.0} found within %{MATCHED_VAR_NAME}: %{MATCHED_VAR}',\
+    tag:'application-multi',\
+    tag:'attack-reputation-scanner',\
+    severity:'CRITICAL',\
+    setvar:'tx.inbound_anomaly_score_pl1=+%{tx.critical_anomaly_score}'"
+
+# Защита от SQL-инъекций
+SecRule ARGS "@rx (SELECT|INSERT|DELETE|UPDATE|DROP|--|;|\\bOR\\b|\\bAND\\b)" \
+    "id:1000001,\
+    phase:2,\
+    block,\
+    msg:'SQL Injection Detected',\
+    severity:'CRITICAL',\
+    log,\
+    tag:'attack-sqli'"
+
+# Защита от XSS
+SecRule ARGS "@rx (<script>|javascript:|onerror=|onload=|<iframe>|<object>|<embed>)" \
+    "id:1000002,\
+    phase:2,\
+    block,\
+    msg:'XSS Attack Detected',\
+    severity:'CRITICAL',\
+    log,\
+    tag:'attack-xss'"
+
+# Защита от удаленного выполнения кода (RCE)
+SecRule ARGS "@rx (exec|system|shell_exec|passthru|popen|proc_open|eval)" \
+    "id:1000003,\
+    phase:2,\
+    block,\
+    msg:'Remote Code Execution Attempt Detected',\
+    severity:'CRITICAL',\
+    log,\
+    tag:'attack-rce'"
+
+# Защита от CSRF (Cross-Site Request Forgery)
+SecRule REQUEST_METHOD "^(POST)$" \
+    "id:1000004,\
+    phase:2,\
+    block,\
+    msg:'CSRF Attack Detected',\
+    severity:'CRITICAL',\
+    log,\
+    tag:'attack-csrf'"
+
+# Защита от Directory Traversal
+SecRule REQUEST_URI "@rx (\\.|\\.\\.|/\\.\\.|/\\./)" \
+    "id:1000005,\
+    phase:2,\
+    block,\
+    msg:'Directory Traversal Attempt Detected',\
+    severity:'CRITICAL',\
+    log,\
+    tag:'attack-directory-traversal'"
+
+# -= Paranoia Level 2 =-
+SecRule TX:DETECTION_PARANOIA_LEVEL "@lt 2" "id:913013,phase:1,pass,nolog,tag:'OWASP_CRS',ver:'OWASP_CRS/4.9.0-dev',skipAfter:END-REQUEST-913-SCANNER-DETECTION"
+SecRule TX:DETECTION_PARANOIA_LEVEL "@lt 2" "id:913014,phase:2,pass,nolog,tag:'OWASP_CRS',ver:'OWASP_CRS/4.9.0-dev',skipAfter:END-REQUEST-913-SCANNER-DETECTION"
+
+# -= Paranoia Level 3 =-
+SecRule TX:DETECTION_PARANOIA_LEVEL "@lt 3" "id:913015,phase:1,pass,nolog,tag:'OWASP_CRS',ver:'OWASP_CRS/4.9.0-dev',skipAfter:END-REQUEST-913-SCANNER-DETECTION"
+SecRule TX:DETECTION_PARANOIA_LEVEL "@lt 3" "id:913016,phase:2,pass,nolog,tag:'OWASP_CRS',ver:'OWASP_CRS/4.9.0-dev',skipAfter:END-REQUEST-913-SCANNER-DETECTION"
+
+# -= Paranoia Level 4 =-
+SecRule TX:DETECTION_PARANOIA_LEVEL "@lt 4" "id:913017,phase:1,pass,nolog,tag:'OWASP_CRS',ver:'OWASP_CRS/4.9.0-dev',skipAfter:END-REQUEST-913-SCANNER-DETECTION"
+SecRule TX:DETECTION_PARANOIA_LEVEL "@lt 4" "id:913018,phase:2,pass,nolog,tag:'OWASP_CRS',ver:'OWASP_CRS/4.9.0-dev',skipAfter:END-REQUEST-913-SCANNER-DETECTION"
+
+# -= Paranoia Levels Finished =-
+SecMarker "END-REQUEST-913-SCANNER-DETECTION"
+
+# Дополнительные правила для повышения безопасности
+
+## Защита от HTTP Response Splitting
+SecRule REQUEST_HEADERS "Set-Cookie" \
+   "id:1000006,\
+   phase:2,\
+   block,\
+   msg:'HTTP Response Splitting Attempt Detected',\
+   severity:'CRITICAL',\
+   log,\
+   tag:'attack-http-response-splitting'"
+
+## Защита от HTTP Header Injection
+SecRule REQUEST_HEADERS "@rx (\r\n|\n)" \
+   "id:1000007,\
+   phase:2,\
+   block,\
+   msg:'HTTP Header Injection Attempt Detected',\
+   severity:'CRITICAL',\
+   log,\
+   tag:'attack-http-header-injection'"
+
+## Блокировка запросов с подозрительными символами
+SecRule ARGS "@rx [<>\"']" \
+   "id:1000008,\
+   phase:2,\
+   block,\
+   msg:'Suspicious Characters Detected in Input',\
+   severity:'CRITICAL',\
+   log,\
+   tag:'attack-suspicious-input'"
+
+## Ограничение частоты запросов для предотвращения DoS/DDoS атак
+SecRule REQUEST_HEADERS:X-Forwarded-For "@ipMatchFromFile /etc/modsecurity/ip_whitelist.txt" \
+   "id:1000009,\
+   phase:1,\
+   pass,nolog,t:none,setvar:'tx.anomaly_score=+1'"
+   
+## Включение режима блокировки по умолчанию для всех правил без явного разрешения.
+SecDefaultAction "phase:1,deny,status:403"
+SecDefaultAction "phase:2,deny,status:403"
